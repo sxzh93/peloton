@@ -14,6 +14,7 @@ RM = rm
 
 CLASSES = \
 	PLTestBase.java \
+	AlterTableTest.java \
 	InsertTPCCTest.java \
 	InsertPSTest.java \
 	UpdateTest.java
@@ -28,6 +29,7 @@ clean:
 test:	$(CLASSES)
 	java -jar lib/junit-platform-console-standalone-1.1.0.jar \
 	  --class-path $(CP) \
+	  -c AlterTableTest \
 	  -c InsertTPCCTest \
 	  -c InsertPSTest \
           -c UpdateTest
