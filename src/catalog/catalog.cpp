@@ -1193,35 +1193,6 @@ void Catalog::InitializeFunctions() {
       /**
        * integer functions
        */
-<<<<<<< HEAD
-      AddBuiltinFunction(
-          "abs", {type::TypeId::TINYINT}, type::TypeId::TINYINT,
-          internal_lang, "Abs",
-          function::BuiltInFuncType{OperatorId::Abs,
-                                    function::DecimalFunctions::_Abs},
-          txn);
-
-      AddBuiltinFunction(
-          "abs", {type::TypeId::SMALLINT}, type::TypeId::SMALLINT,
-          internal_lang, "Abs",
-          function::BuiltInFuncType{OperatorId::Abs,
-                                    function::DecimalFunctions::_Abs},
-          txn);
-
-      AddBuiltinFunction(
-          "abs", {type::TypeId::INTEGER}, type::TypeId::INTEGER,
-          internal_lang, "Abs",
-          function::BuiltInFuncType{OperatorId::Abs,
-                                    function::DecimalFunctions::_Abs},
-          txn);
-
-      AddBuiltinFunction(
-          "abs", {type::TypeId::BIGINT}, type::TypeId::BIGINT,
-          internal_lang, "Abs",
-          function::BuiltInFuncType{OperatorId::Abs,
-                                    function::DecimalFunctions::_Abs},
-          txn);
-=======
       AddBuiltinFunction("abs", {type::TypeId::TINYINT}, type::TypeId::TINYINT,
                          internal_lang, "Abs",
                          function::BuiltInFuncType{
@@ -1245,7 +1216,6 @@ void Catalog::InitializeFunctions() {
                          function::BuiltInFuncType{
                              OperatorId::Abs, function::DecimalFunctions::_Abs},
                          txn);
->>>>>>> c4ce8a92228cfd1ea1aac0205c916928190482fc
 
       AddBuiltinFunction(
           "floor", {type::TypeId::INTEGER}, type::TypeId::DECIMAL,
