@@ -857,18 +857,15 @@ ResultType Catalog::ChangeColumnName(const std::string &database_name,
     // Change column name in the global schema
     schema->ChangeColumnName(columnId, names[0]);
 
-    // Change cached ColumnCatalog
+    // Modify the pg_table
     oid_t table_oid = Catalog::GetInstance()
                           ->GetTableObject(database_name, table_name, txn)
                           ->GetTableOid();
-    catalog::ColumnCatalog::GetInstance()->DeleteColumn(table_oid, old_names[0],
-                                                        txn);
-    auto new_column = schema->GetColumn(columnId);
-    catalog::ColumnCatalog::GetInstance()->InsertColumn(
-        table_oid, new_column.GetName(), columnId, new_column.GetOffset(),
-        new_column.GetType(), new_column.IsInlined(),
-        new_column.GetConstraints(), pool_.get(), txn);
-
+    bool res = catalog::ColumnCatalog::GetInstance()->UpdateColumnName(
+        table_oid, old_names[0], names[0], txn);
+    if (!res) {
+      throw CatalogException("Change Column name failed.");
+    }
   } catch (CatalogException &e) {
     return ResultType::FAILURE;
   }
