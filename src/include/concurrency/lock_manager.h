@@ -18,7 +18,6 @@
 #include "common/internal_types.h"
 #include "common/logger.h"
 #include <boost/thread/shared_mutex.hpp>
-#include <boost/foreach.hpp>
 
 namespace peloton {
 namespace concurrency {
@@ -29,8 +28,62 @@ namespace concurrency {
 
 class LockManager {
  public:
-  // Type of locks. Currently only supports RW_LOCK
-  enum LockType { LOCK, RW_LOCK, SPIN_LOCK };
+  //===--------------------------------------------------------------------===//
+  // Safe lock
+  //===--------------------------------------------------------------------===//
+  // Initial one of these after initialed lock on oid
+  // Remember to initial it as local variable
+  // It will automatically unlock the corresponding lock when the current scope
+  // exits (since the unlock logic is in its destructor).
+  class SafeLock {
+   public:
+    // Type of locked read write locks.
+    enum RWLockType { SHARED, EXCLUSIVE, INVALID };
+
+    // Default Constructor
+    SafeLock() {
+      oid_ = INVALID_OID;
+      type_ = RWLockType::INVALID;
+    };
+
+    SafeLock(oid_t oid, RWLockType type) {
+      oid_ = oid;
+      type_ = type;
+    }
+
+    // Set the oid and type for the lock
+    void Set(oid_t oid, RWLockType type) {
+      oid_ = oid;
+      type_ = type;
+    }
+
+    // Unlock the given lock in the constructor
+    ~SafeLock() {
+      LockManager *lm = LockManager::GetInstance();
+      if (type_ == RWLockType::EXCLUSIVE) {
+        lm->UnlockExclusive(oid_);
+      } else if (type_ == RWLockType::SHARED) {
+        lm->UnlockShared(oid_);
+      }
+    }
+
+    // Members
+   private:
+    oid_t oid_;
+    RWLockType type_;
+  };
+
+  // Type of locks. Currently only support RWLOCK
+  enum LockType { RW_LOCK };
+
+  // Type of locked read write locks.
+  enum RWLockType { SHARED, EXCLUSIVE, INVALID };
+
+  // This is used by transaction manager to properly release locks.
+  struct LockWithOid {
+    oid_t oid;
+    RWLockType type;
+  };
 
   // Constructor
   LockManager() {}
@@ -38,9 +91,11 @@ class LockManager {
   // Destructor
   ~LockManager() {
     // Iterate through mapped locks
-    std::pair<oid_t, std::shared_ptr<boost::upgrade_mutex> > tmp;
     std::vector<oid_t> v;
-    BOOST_FOREACH (tmp, lock_map_) { v.push_back(tmp.first); }
+    auto itr = lock_map_.begin();
+    for (; itr != lock_map_.end(); itr++) {
+      v.push_back(itr->first);
+    }
 
     // Remove each lock
     for (std::vector<oid_t>::iterator itr = v.begin(); itr != v.end(); itr++) {
@@ -81,6 +136,7 @@ class LockManager {
   boost::upgrade_mutex internal_rw_lock_;
 
   // Map to store RW_LOCK for different objects
+  // Changed to shared_ptr for safety reasons
   std::map<oid_t, std::shared_ptr<boost::upgrade_mutex> > lock_map_;
 
   // Get RW lock by oid

@@ -45,13 +45,11 @@ bool LockManager::InitLock(oid_t oid, LockManager::LockType /*type*/) {
   boost::upgrade_mutex *lock = GetLock(oid);
   if (lock != nullptr) {
     internal_rw_lock_.unlock();
-    LOG_TRACE("Init lock failed.");
+    LOG_TRACE("Init lock failed, lock oid is %u.", oid);
     return false;
   }
 
   // Initialize new lock for the object
-  //boost::upgrade_mutex *rw_lock = new boost::upgrade_mutex();
-
   std::pair<oid_t, std::shared_ptr<boost::upgrade_mutex> > p;
   p.first = oid;
   p.second = std::make_shared<boost::upgrade_mutex>();
@@ -75,7 +73,7 @@ bool LockManager::RemoveLock(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock();
-    LOG_TRACE("Remove lock failed.");
+    LOG_TRACE("Remove lock failed, lock oid is %u.", oid);
     return false;
   }
   lock_map_.erase(oid);
@@ -95,7 +93,7 @@ bool LockManager::LockShared(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock_shared();
-    LOG_TRACE("Shared lock failed.");
+    LOG_TRACE("Shared lock failed, lock oid is %u.", oid);
     return false;
   }
   rw_lock->lock_shared();
@@ -115,7 +113,7 @@ bool LockManager::LockExclusive(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock_shared();
-    LOG_TRACE("Exclusive lock failed.");
+    LOG_TRACE("Exclusive lock failed, lock oid is %u.", oid);
     return false;
   }
   rw_lock->lock();
@@ -135,7 +133,7 @@ bool LockManager::LockToShared(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock_shared();
-    LOG_TRACE("Change to shared lock failed.");
+    LOG_TRACE("Change to shared lock failed, lock oid is %u.", oid);
     return false;
   }
   rw_lock->unlock_and_lock_shared();
@@ -155,7 +153,7 @@ bool LockManager::LockToExclusive(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock_shared();
-    LOG_TRACE("Change to exclusive lock failed.");
+    LOG_TRACE("Change to exclusive lock failed, lock oid is %u.", oid);
     return false;
   }
   rw_lock->unlock_shared();
@@ -176,7 +174,7 @@ bool LockManager::UnlockShared(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock_shared();
-    LOG_TRACE("Unlock shared lock failed.");
+    LOG_DEBUG("Unlock shared lock failed, lock oid is %u.", oid);
     return false;
   }
   rw_lock->unlock_shared();
@@ -196,7 +194,7 @@ bool LockManager::UnlockExclusive(oid_t oid) {
   boost::upgrade_mutex *rw_lock = GetLock(oid);
   if (rw_lock == nullptr) {
     internal_rw_lock_.unlock_shared();
-    LOG_TRACE("Unlock exclusive lock failed.");
+    LOG_DEBUG("Unlock exclusive lock failed, lock oid is %u.", oid);
     return false;
   }
   rw_lock->unlock();
