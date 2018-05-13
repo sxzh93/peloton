@@ -100,6 +100,8 @@ shared_ptr<planner::AbstractPlan> Optimizer::BuildPelotonPlanTree(
   }
   // TODO: support multi-statement queries
   auto parse_tree = parse_tree_list->GetStatement(0);
+  LOG_TRACE("parse tree stmt type = %d",
+            static_cast<int>(parse_tree->GetType()));
 
   unique_ptr<planner::AbstractPlan> child_plan = nullptr;
 
@@ -171,7 +173,12 @@ unique_ptr<planner::AbstractPlan> Optimizer::HandleDDLStatement(
       std::unique_ptr<planner::AbstractPlan> child_CreatePlan(create_plan);
       ddl_plan = move(child_CreatePlan);
 
-      if (create_plan->GetCreateType() == peloton::CreateType::INDEX) {
+      LOG_TRACE("create plan type = %d",
+                static_cast<int>(create_plan->GetCreateType()));
+
+      if (create_plan->GetCreateType() == peloton::CreateType::INDEX ||
+          create_plan->GetCreateType() ==
+              peloton::CreateType::INDEX_CONCURRENT) {
         auto create_stmt = (parser::CreateStatement *)tree;
         auto target_table = catalog::Catalog::GetInstance()->GetTableWithName(
             create_stmt->GetDatabaseName(), create_stmt->GetSchemaName(),
@@ -191,15 +198,27 @@ unique_ptr<planner::AbstractPlan> Optimizer::HandleDDLStatement(
           oid_t col_pos = column_object->GetColumnId();
           column_ids.push_back(col_pos);
         }
+        std::string index_name = create_stmt->index_name;
         // Create a plan to retrieve data
         std::unique_ptr<planner::SeqScanPlan> child_SeqScanPlan(
             new planner::SeqScanPlan(target_table, nullptr, column_ids, false));
 
+        // Create a second plan to retrieve data
+        // This plan is for concurrent create index
+        std::unique_ptr<planner::SeqScanPlan> child_SeqScanPlan_second(
+            new planner::SeqScanPlan(target_table, nullptr, column_ids, false));
         child_SeqScanPlan->AddChild(std::move(ddl_plan));
         ddl_plan = std::move(child_SeqScanPlan);
+
+        bool concurrent = false;
         // Create a plan to add data to index
+        if (create_plan->GetCreateType() ==
+            peloton::CreateType::INDEX_CONCURRENT) {
+          concurrent = true;
+        }
         std::unique_ptr<planner::AbstractPlan> child_PopulateIndexPlan(
-            new planner::PopulateIndexPlan(target_table, column_ids));
+            new planner::PopulateIndexPlan(target_table, column_ids, index_name,
+                                           concurrent));
         child_PopulateIndexPlan->AddChild(std::move(ddl_plan));
         create_plan->SetKeyAttrs(column_ids);
         ddl_plan = std::move(child_PopulateIndexPlan);

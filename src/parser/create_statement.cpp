@@ -26,8 +26,7 @@ const std::string CreateStatement::GetInfo(int num_indent) const {
       os << "Create type: Table" << std::endl;
       os << StringUtil::Indent(num_indent + 1)
          << StringUtil::Format("IF NOT EXISTS: %s",
-                               (if_not_exists) ? "True" : "False")
-         << std::endl;
+                               (if_not_exists) ? "True" : "False") << std::endl;
       os << StringUtil::Indent(num_indent + 1)
          << StringUtil::Format("Table name: %s", GetTableName().c_str());
       ;
@@ -41,6 +40,18 @@ const std::string CreateStatement::GetInfo(int num_indent) const {
     }
     case CreateStatement::CreateType::kIndex: {
       os << "Create type: Index" << std::endl;
+      os << StringUtil::Indent(num_indent + 1) << index_name << std::endl;
+      os << StringUtil::Indent(num_indent + 1)
+         << "INDEX : table : " << GetTableName() << " unique : " << unique
+         << " attrs : ";
+      for (auto &key : index_attrs) os << key << " ";
+      os << std::endl;
+      os << StringUtil::Indent(num_indent + 1)
+         << "Type : " << IndexTypeToString(index_type);
+      break;
+    }
+    case CreateStatement::CreateType::kIndexConcurrent: {
+      os << "Create type: Concurrent Index" << std::endl;
       os << StringUtil::Indent(num_indent + 1) << index_name << std::endl;
       os << StringUtil::Indent(num_indent + 1)
          << "INDEX : table : " << GetTableName() << " unique : " << unique
@@ -95,8 +106,7 @@ const std::string CreateStatement::GetInfo(int num_indent) const {
         }
       } else {
         os << StringUtil::Indent(num_indent + 1)
-           << "-> COLUMN REF : " << col->name
-           << " "
+           << "-> COLUMN REF : " << col->name << " "
            // << col->type << " not null : "
            << col->not_null << " primary : " << col->primary << " unique "
            << col->unique << " varlen " << col->varlen;

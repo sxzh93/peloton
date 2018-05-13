@@ -12,6 +12,8 @@
 
 #include "concurrency/transaction_manager.h"
 
+#include <unordered_set>
+
 #include "catalog/manager.h"
 #include "concurrency/transaction_context.h"
 #include "function/date_functions.h"
@@ -67,13 +69,16 @@ TransactionContext *TransactionManager::BeginTransaction(
   }
 
   if (static_cast<StatsType>(settings::SettingsManager::GetInt(
-      settings::SettingId::stats_mode)) != StatsType::INVALID) {
+          settings::SettingId::stats_mode)) != StatsType::INVALID) {
     stats::BackendStatsContext::GetInstance()
         ->GetTxnLatencyMetric()
         .StartTimer();
   }
 
   txn->SetTimestamp(function::DateFunctions::Now());
+
+  // Record current transaction in transaction set
+  current_transactions_.insert(txn->GetTransactionId());
 
   return txn;
 }
@@ -84,7 +89,17 @@ void TransactionManager::EndTransaction(TransactionContext *current_txn) {
     current_txn->ExecOnCommitTriggers();
   }
 
-  if(gc::GCManagerFactory::GetGCType() == GarbageCollectionType::ON) {
+  // Unlock all acquired locks
+  if (!current_txn->UnlockAllLocks()) {
+    LOG_WARN("On transaction end, release lock failed!");
+  }
+
+  // Record deletion of transaction in current transaction set
+  mtx_.lock();
+  current_transactions_.unsafe_erase(current_txn->GetTransactionId());
+  mtx_.unlock();
+
+  if (gc::GCManagerFactory::GetGCType() == GarbageCollectionType::ON) {
     gc::GCManagerFactory::GetInstance().RecycleTransaction(current_txn);
   } else {
     delete current_txn;
@@ -93,11 +108,10 @@ void TransactionManager::EndTransaction(TransactionContext *current_txn) {
   current_txn = nullptr;
 
   if (static_cast<StatsType>(settings::SettingsManager::GetInt(
-      settings::SettingId::stats_mode)) != StatsType::INVALID) {
+          settings::SettingId::stats_mode)) != StatsType::INVALID) {
     stats::BackendStatsContext::GetInstance()
         ->GetTxnLatencyMetric()
         .RecordLatency();
-
   }
 }
 
@@ -253,6 +267,18 @@ VisibilityType TransactionManager::IsVisible(
       }
     }
   }
+}
+
+// This function checks if the given transaction set overlaps with current
+// transaction set. Return true if overlaps, false otherwise.
+bool TransactionManager::CheckConcurrentTxn(
+    tbb::concurrent_unordered_set<txn_id_t> *input) {
+  for (auto itr = input->begin(); itr != input->end(); itr++) {
+    if (current_transactions_.find(*itr) != current_transactions_.end()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace concurrency

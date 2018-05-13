@@ -14,6 +14,7 @@
 
 #include "codegen/transaction_runtime.h"
 #include "concurrency/transaction_manager_factory.h"
+#include "concurrency/lock_manager.h"
 #include "storage/data_table.h"
 
 namespace peloton {
@@ -40,6 +41,19 @@ void Deleter::Delete(uint32_t tile_group_id, uint32_t tuple_offset) {
   auto *tile_group_header = tile_group->GetHeader();
 
   auto &txn_manager = concurrency::TransactionManagerFactory::GetInstance();
+
+  oid_t table_oid = table_->GetOid();
+  // Lock the table (reader lock)
+  concurrency::LockManager *lm = concurrency::LockManager::GetInstance();
+  LOG_TRACE(
+      "Shared Lock in delete: lock mamager address is %p, table oid is %u",
+      (void *)lm, table_oid);
+  bool lock_success = lm->LockShared(table_oid);
+  if (!lock_success) {
+    LOG_TRACE("Cannot obtain lock for the table, abort!");
+  } else {
+    txn->AddLockShared(table_oid);
+  }
 
   bool is_owner = txn_manager.IsOwner(txn, tile_group_header, tuple_offset);
   bool is_written = txn_manager.IsWritten(txn, tile_group_header, tuple_offset);

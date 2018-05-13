@@ -23,6 +23,8 @@
 #include "common/logger.h"
 #include "common/printable.h"
 #include "type/value.h"
+#include "tbb/concurrent_unordered_set.h"
+#include "storage/tuple.h"
 
 namespace peloton {
 
@@ -426,6 +428,17 @@ class Index : public Printable {
 
   type::AbstractPool *GetPool() const { return pool; }
 
+  void SetPopulated(bool populate) { populated = populate; }
+
+  void ResetPopulated() {
+    populated = false;
+    insert_set.clear();
+  }
+
+  bool CheckDuplicate(std::pair<storage::Tuple, ItemPointer> entry) {
+    return (insert_set.find(entry) != insert_set.end());
+  }
+
   /**
    * @brief Calculate the total number of bytes used by this index
    *
@@ -470,6 +483,13 @@ class Index : public Printable {
 
   // This is used by index tuner
   std::atomic<size_t> indexed_tile_group_offset;
+
+  // variable for identifying index being populated
+  bool populated = false;
+
+  // set that records current insertions in index, used in populate index
+  tbb::concurrent_unordered_set<std::pair<storage::Tuple, ItemPointer> >
+      insert_set;
 };
 
 }  // namespace index

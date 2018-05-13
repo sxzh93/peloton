@@ -91,6 +91,8 @@ class Tuple : public AbstractTuple {
   bool operator==(const Tuple &other) const;
   bool operator!=(const Tuple &other) const;
 
+  operator size_t() const { return HashCode(); }
+
   int Compare(const Tuple &other) const;
 
   int Compare(const Tuple &other, const std::vector<oid_t> &columns) const;

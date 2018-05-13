@@ -93,6 +93,13 @@ DataTable::DataTable(catalog::Schema *schema, const std::string &table_name,
   for (size_t i = 0; i < active_indirection_array_count_; ++i) {
     AddDefaultIndirectionArray(i);
   }
+
+  // Initialize lock
+  concurrency::LockManager *lm = concurrency::LockManager::GetInstance();
+  bool success = lm->InitLock(table_oid, concurrency::LockManager::RW_LOCK);
+  if (!success) {
+    LOG_TRACE("Initialize lock in create table failed! oid is %u", table_oid);
+  }
 }
 
 DataTable::~DataTable() {
@@ -388,7 +395,7 @@ bool DataTable::InsertTuple(const AbstractTuple *tuple, ItemPointer location,
   }
 
   PELOTON_ASSERT((*index_entry_ptr)->block == location.block &&
-            (*index_entry_ptr)->offset == location.offset);
+                 (*index_entry_ptr)->offset == location.offset);
 
   // Increase the table's number of tuples by 1
   IncreaseTupleCount(1);
@@ -465,6 +472,97 @@ bool DataTable::InsertInIndexes(const AbstractTuple *tuple,
   for (int index_itr = index_count - 1; index_itr >= 0; --index_itr) {
     auto index = GetIndex(index_itr);
     if (index == nullptr) continue;
+    auto index_schema = index->GetKeySchema();
+    auto indexed_columns = index_schema->GetIndexedColumns();
+    std::unique_ptr<storage::Tuple> key(new storage::Tuple(index_schema, true));
+    key->SetFromTuple(tuple, indexed_columns, index->GetPool());
+
+    switch (index->GetIndexType()) {
+      case IndexConstraintType::PRIMARY_KEY:
+      case IndexConstraintType::UNIQUE: {
+        // get unique tuple from primary/unique index.
+        // if in this index there has been a visible or uncommitted
+        // <key, location> pair, this constraint is violated
+        res = index->CondInsertEntry(key.get(), *index_entry_ptr, fn);
+      } break;
+
+      case IndexConstraintType::DEFAULT:
+      default:
+        index->InsertEntry(key.get(), *index_entry_ptr);
+        break;
+    }
+
+    // Handle failure
+    if (res == false) {
+      // If some of the indexes have been inserted,
+      // the pointer has a chance to be dereferenced by readers and it cannot be
+      // deleted
+      *index_entry_ptr = nullptr;
+      return false;
+    } else {
+      success_count += 1;
+    }
+    LOG_TRACE("Index constraint check on %s passed.", index->GetName().c_str());
+  }
+
+  return true;
+}
+
+/**
+ * @brief Insert a tuple into the specified index.
+ * If index is primary/unique, check visibility of existing
+ * index entries.
+ * @warning This still doesn't guarantee serializability.
+ *
+ * @returns True on success, false if a visible entry exists (in case of
+ *primary/unique).
+ */
+bool DataTable::InsertInIndex(const AbstractTuple *tuple, ItemPointer location,
+                              concurrency::TransactionContext *transaction,
+                              ItemPointer **index_entry_ptr,
+                              std::string index_name) {
+  int index_count = GetIndexCount();
+
+  size_t active_indirection_array_id =
+      number_of_tuples_ % active_indirection_array_count_;
+
+  size_t indirection_offset = INVALID_INDIRECTION_OFFSET;
+
+  while (true) {
+    auto active_indirection_array =
+        active_indirection_arrays_[active_indirection_array_id];
+    indirection_offset = active_indirection_array->AllocateIndirection();
+
+    if (indirection_offset != INVALID_INDIRECTION_OFFSET) {
+      *index_entry_ptr =
+          active_indirection_array->GetIndirectionByOffset(indirection_offset);
+      break;
+    }
+  }
+
+  (*index_entry_ptr)->block = location.block;
+  (*index_entry_ptr)->offset = location.offset;
+
+  if (indirection_offset == INDIRECTION_ARRAY_MAX_SIZE - 1) {
+    AddDefaultIndirectionArray(active_indirection_array_id);
+  }
+
+  auto &transaction_manager =
+      concurrency::TransactionManagerFactory::GetInstance();
+
+  std::function<bool(const void *)> fn =
+      std::bind(&concurrency::TransactionManager::IsOccupied,
+                &transaction_manager, transaction, std::placeholders::_1);
+
+  // Since this is NOT protected by a lock, concurrent insert may happen.
+  bool res = true;
+  int success_count = 0;
+
+  for (int index_itr = index_count - 1; index_itr >= 0; --index_itr) {
+    auto index = GetIndex(index_itr);
+    if (index == nullptr) continue;
+    std::string current_name = index->GetName();
+    if (current_name.compare(index_name) != 0) continue;
     auto index_schema = index->GetKeySchema();
     auto indexed_columns = index_schema->GetIndexedColumns();
     std::unique_ptr<storage::Tuple> key(new storage::Tuple(index_schema, true));
@@ -1070,6 +1168,22 @@ std::shared_ptr<index::Index> DataTable::GetIndexWithOid(
   if (ret_index == nullptr) {
     throw CatalogException("No index with oid = " + std::to_string(index_oid) +
                            " is found");
+  }
+  return ret_index;
+}
+
+std::shared_ptr<index::Index> DataTable::GetIndexWithName(std::string name) {
+  std::shared_ptr<index::Index> ret_index;
+  auto index_count = indexes_.GetSize();
+
+  for (std::size_t index_itr = 0; index_itr < index_count; index_itr++) {
+    ret_index = indexes_.Find(index_itr);
+    if (ret_index != nullptr && ret_index->GetName() == name) {
+      break;
+    }
+  }
+  if (ret_index == nullptr) {
+    throw CatalogException("No index with name = " + name + " is found");
   }
   return ret_index;
 }

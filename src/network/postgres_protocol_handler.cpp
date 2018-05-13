@@ -156,6 +156,8 @@ ProcessResult PostgresProtocolHandler::ExecQueryMessage(
       StatementTypeToQueryType(sql_stmt->GetType(), sql_stmt.get());
   protocol_type_ = NetworkProtocolType::POSTGRES_PSQL;
 
+  LOG_INFO("query type = %d", static_cast<int>(query_type));
+
   switch (query_type) {
     case QueryType::QUERY_PREPARE: {
       std::shared_ptr<Statement> statement(nullptr);
@@ -262,8 +264,8 @@ ResultType PostgresProtocolHandler::ExecQueryExplain(
   std::unique_ptr<parser::SQLStatementList> unnamed_sql_stmt_list(
       new parser::SQLStatementList());
   unnamed_sql_stmt_list->PassInStatement(std::move(explain_stmt.real_sql_stmt));
-  auto stmt = traffic_cop_->PrepareStatement(
-      "explain", query, std::move(unnamed_sql_stmt_list));
+  auto stmt = traffic_cop_->PrepareStatement("explain", query,
+                                             std::move(unnamed_sql_stmt_list));
   ResultType status = ResultType::UNKNOWN;
   if (stmt != nullptr) {
     traffic_cop_->SetStatement(stmt);
@@ -635,7 +637,8 @@ size_t PostgresProtocolHandler::ReadParamValue(
                   .CastAs(PostgresValueTypeToPelotonValueType(
                       (PostgresValueType)param_types[param_idx]));
         }
-        PELOTON_ASSERT(param_values[param_idx].GetTypeId() != type::TypeId::INVALID);
+        PELOTON_ASSERT(param_values[param_idx].GetTypeId() !=
+                       type::TypeId::INVALID);
       } else {
         // BINARY mode
         PostgresValueType pg_value_type =
@@ -715,7 +718,8 @@ size_t PostgresProtocolHandler::ReadParamValue(
             break;
           }
         }
-        PELOTON_ASSERT(param_values[param_idx].GetTypeId() != type::TypeId::INVALID);
+        PELOTON_ASSERT(param_values[param_idx].GetTypeId() !=
+                       type::TypeId::INVALID);
       }
     }
   }
