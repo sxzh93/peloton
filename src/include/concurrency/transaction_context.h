@@ -280,8 +280,16 @@ class TransactionContext : public Printable {
    *
    * @return     True if read only, False otherwise.
    */
-  inline bool IsReadOnly() const {
-    return is_written_ == false && insert_count_ == 0;
+  bool IsReadOnly() const {
+    return read_only_;
+  }
+
+  /**
+   * @brief      mark this context as read only
+   *
+   */
+  void SetReadOnly() {
+    read_only_ = true;
   }
 
   /**
@@ -356,6 +364,8 @@ class TransactionContext : public Printable {
 
   /** vector of dropped data tables **/
   std::vector<storage::DataTable *> dropped_tables;
+  /** one default transaction is NOT 'read only' unless it is marked 'read only' explicitly*/
+  bool read_only_ = false;
 };
 
 }  // namespace concurrency
